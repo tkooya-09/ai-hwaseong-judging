@@ -20,8 +20,8 @@ export function createHandler(C, env, request = fetch) {
       let credentials;
       if(token.startsWith('name:')){
         let name;try{name=decodeURIComponent(token.slice(5)).trim().normalize('NFC');}catch{return json({error:'심사위원 이름을 확인해 주세요.'},401);}
-        const judge=C.DATA.judges.find(j=>j.name===name);
-        if(!judge)return json({error:'등록된 심사위원 이름을 정확히 입력해 주세요.'},401);
+        const judge=name==='전명구'?{id:'admin'}:C.DATA.judges.find(j=>j.name===name);
+        if(!judge)return json({error:'등록된 이름을 정확히 입력해 주세요.'},401);
         credentials=await db('hwaseong_judging_codes?role=eq.'+judge.id+'&event_id=eq.hwaseong-2026-final&active=eq.true&select=role,event_id&limit=1');
       }else{
         const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))),x=>x.toString(16).padStart(2,'0')).join('');

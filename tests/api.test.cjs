@@ -24,7 +24,7 @@ test('Supabase API auth, parallel five-judge writes, visibility, lock and storag
   assert.equal((await call('admin',undefined,'wrong')).code,401);
   for(const j of C.DATA.judges){const r=await call(j.id,undefined,'name:'+encodeURIComponent(j.name));assert.equal(r.code,200);assert.equal(r.data.role,j.id);assert.equal(r.data.state.ballots[C.DATA.judges.find(x=>x.id!==j.id).id].scores,null);}
   assert.equal((await call('admin',undefined,'name:'+encodeURIComponent('운영자'))).code,401);
-  assert.equal((await call('admin',undefined,'name:'+encodeURIComponent('전명구'))).code,401);
+  const namedAdmin=await call('admin',undefined,'name:'+encodeURIComponent('전명구'));assert.equal(namedAdmin.code,200);assert.equal(namedAdmin.data.role,'admin');assert.ok(namedAdmin.data.state.ballots.j1.scores);
   assert.equal((await call('admin',undefined,'name:%ZZ')).code,401);
   assert.equal((await call('j1',{type:'finalize'},'name:'+encodeURIComponent(C.DATA.judges[0].name))).code,403);
   const unauthorized=await call('j1',{type:'finalize'});assert.equal(unauthorized.code,403);
