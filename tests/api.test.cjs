@@ -9,7 +9,7 @@ test('Supabase API auth, parallel five-judge writes, visibility, lock and storag
  const request=async(url,opt)=>{
   if(offline)throw Error('offline');
   const u=new URL(url);
-  if(u.pathname.endsWith('hwaseong_judging_codes')){const role=hashes[u.searchParams.get('token_hash').slice(3)];return Response.json(role?[{role,event_id:'test'}]:[]);}
+  if(u.pathname.endsWith('hwaseong_judging_codes')){const role=u.searchParams.has('token_hash')?hashes[u.searchParams.get('token_hash').slice(3)]:u.searchParams.get('role')?.slice(3);return Response.json(role?[{role,event_id:'test'}]:[]);}
   if(opt.method==='GET')return Response.json([{state:structuredClone(stored),revision:stored.revision}]);
   const expected=Number(u.searchParams.get('revision').slice(3));
   if(stored.revision!==expected)return Response.json([]);
@@ -22,6 +22,11 @@ test('Supabase API auth, parallel five-judge writes, visibility, lock and storag
  }
  try{
   assert.equal((await call('admin',undefined,'wrong')).code,401);
+  for(const j of C.DATA.judges){const r=await call(j.id,undefined,'name:'+encodeURIComponent(j.name));assert.equal(r.code,200);assert.equal(r.data.role,j.id);assert.equal(r.data.state.ballots[C.DATA.judges.find(x=>x.id!==j.id).id].scores,null);}
+  assert.equal((await call('admin',undefined,'name:'+encodeURIComponent('운영자'))).code,401);
+  assert.equal((await call('admin',undefined,'name:'+encodeURIComponent('전명구'))).code,401);
+  assert.equal((await call('admin',undefined,'name:%ZZ')).code,401);
+  assert.equal((await call('j1',{type:'finalize'},'name:'+encodeURIComponent(C.DATA.judges[0].name))).code,403);
   const unauthorized=await call('j1',{type:'finalize'});assert.equal(unauthorized.code,403);
   const out=await Promise.all(C.DATA.judges.map((j,i)=>call(j.id,{type:'save',expectedRevision:0,scores:Object.fromEntries(C.DATA.projects.map(p=>[p.id,Array(5).fill(20-i)]))})));
   assert.deepEqual(out.map(x=>x.code),[200,200,200,200,200]);
