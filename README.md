@@ -1,7 +1,7 @@
 # AI화성 챌린지 심사집계표
 
 2026. 9. 17. 시민·공무원 AI 공모전 최종 발표심사를 위한 HTML 심사집계 화면입니다.
-HTML만으로 한 PC에서 사용할 수 있고, 동봉한 API와 데이터 저장소를 연결하면 여러 기기의 공동 집계가 가능합니다. 실시간 공동 집계를 사용하려면 Vercel 배포 후 아래 안내에 따라 운영 데이터베이스와 서버 환경변수를 연결해야 합니다.
+HTML만으로 한 PC에서 사용할 수 있고, 동봉한 API와 데이터 저장소를 연결하면 여러 기기의 공동 집계가 가능합니다. 공동 집계 저장소는 Supabase Postgres이며, Edge Function이 접속 인증과 점수 저장을 담당합니다.
 
 ## 1. HTML을 바로 사용하는 방법
 
@@ -41,46 +41,29 @@ HTML만으로 한 PC에서 사용할 수 있고, 동봉한 API와 데이터 저�
 | `lib/print.cjs` | 결과표와 5명 서명란의 인쇄 전용 양식 |
 | `api/state.js` | Vercel 공동 집계 API |
 | `scripts/build.cjs` | 자료와 공통 로직을 단일 HTML로 결합 |
-| `scripts/create-codes.cjs` | 운영자·심사위원별 접속 코드 생성 |
+| `scripts/create-codes.cjs` | 운영자·심사위원별 접속 코드와 해시 생성 |
 | `vercel.json` | Vercel 빌드·배포 설정 |
 | `.env.example` | 필요한 서버 환경변수 양식 |
 | `tests/` | 점수 로직과 API 검증 |
 
-### 배포 순서
+### Supabase 공동 집계 구성
 
-1. ZIP을 풀고 **`package.json`, `api`, `lib`, `dist`가 함께 있는 폴더**의 내용을 GitHub 저장소 최상위에 등록합니다. HTML 한 개만 등록하면 공동 집계 기능은 작동하지 않습니다. `.env` 등 실제 비밀키 파일은 올리지 않습니다.
-2. Vercel에서 해당 GitHub 저장소를 가져옵니다. Framework Preset은 `Other`, Build Command는 `npm run build`, Output Directory는 `dist`입니다. `vercel.json`에 설정되어 있습니다. Node.js는 지원되는 22 이상 버전을 선택합니다.
-3. Vercel Marketplace에서 **Upstash Redis** 저장소를 프로젝트에 연결합니다. 별도 이용 계정과 저장소 설정이 필요합니다.
-4. 다음 서버 환경변수를 프로젝트에 등록합니다. Production과 Preview는 서로 다른 `EVENT_ID`를 사용하여 연습 데이터와 행사 데이터를 분리하세요.
+- Vercel `/api/state` → Supabase `judging-state` Edge Function → Postgres.
+- 운영자/심사위원 접속 코드는 SHA-256 해시만 DB에 저장합니다. 실제 코드는 소스와 HTML에 넣지 않습니다.
+- `hwaseong_judging_events`: 행사별 심사 상태. `revision` 조건부 UPDATE로 동시 저장 충돌을 감지하고 재시도합니다.
+- `hwaseong_judging_codes`: 코드 해시·역할·행사 ID. 코드에 연결된 행사만 접근하며 다른 위원 점수는 서버에서 가립니다.
+- 두 테이블은 RLS가 켜져 있으며 anon/authenticated 권한은 없습니다. Supabase 서버만 접근합니다.
+- Edge Function은 접속 코드를 직접 검증하므로 `verify_jwt=false`로 배포합니다. 인증 없는 점수 조회·저장은 허용하지 않습니다.
+- Supabase가 제공하는 서버 키를 Edge Function에서만 사용합니다. Vercel 환경변수에는 Redis 키나 접속 코드를 넣을 필요가 없습니다.
+- 다른 기기의 저장 결과는 약 3초마다 조회됩니다. WebSocket 방식 Supabase Realtime 구독은 사용하지 않습니다.
 
-| 환경변수 | 값 |
-|---|---|
-| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST API 주소 |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis 쓰기 가능한 REST API 토큰 |
-| `ADMIN_TOKEN` | 운영자 전용 접속 코드, 24자 이상 |
-| `JUDGE_TOKENS` | 심사위원 접속 코드 5개를 담은 JSON 객체 |
-| `EVENT_ID` | 행사별 저장공간 구분값. 예: `hwaseong-2026-final` |
+### 다른 프로젝트에 설치할 때
 
-자동 주입되는 변수명이 `KV_REST_API_URL`, `KV_REST_API_TOKEN`인 경우에도 API가 인식합니다. 읽기 전용 토큰은 점수 저장에 사용할 수 없습니다.
-
-5. Node.js가 설치된 컴퓨터에서 아래 명령으로 서로 다른 접속 코드 6개를 생성합니다. 출력되는 `ADMIN_TOKEN`, `JUDGE_TOKENS` 값을 각각 Vercel 환경변수에 복사합니다. 접속 코드는 HTML이나 GitHub 파일에 넣지 않습니다.
-
-```bash
-node scripts/create-codes.cjs
-```
-
-`JUDGE_TOKENS`는 아래 구조입니다. 예시 문자열을 그대로 사용하면 안 됩니다. 값은 각각 24자 이상이고 모두 달라야 합니다.
-
-```json
-{"j1":"정희석_심사위원_코드","j2":"김규진_심사위원_코드","j3":"홍아름_심사위원_코드","j4":"서호성_심사위원_코드","j5":"정원석_심사위원_코드"}
-```
-
-6. 환경변수를 등록한 뒤 배포하거나 다시 배포합니다. 환경변수 이름과 값은 서버에서만 사용합니다.
-7. 배포 URL을 열고 운영자 코드로 접속합니다. 각 심사위원은 **같은 URL과 자신의 코드**로 접속합니다. 코드로 역할이 결정되어 다른 위원 점수를 수정할 수 없습니다.
-8. 상단에 **‘공동 집계 연결 · 3초 자동 갱신’**이 나타나면 연결된 상태입니다. 다른 기기 입력은 약 3초 간격으로 조회됩니다. 실제 갱신 시간은 네트워크·서버 응답시간과 브라우저 탭 활성 상태에 영향을 받습니다.
-9. 행사 전 별도 `EVENT_ID`에서 기기별 저장·제출·완료·CSV 다운로드를 확인한 뒤 행사 데이터 공간으로 전환합니다. 연습 점수는 단일 PC 모드에서 공동 집계로 자동 이전되지 않습니다.
-
-**GitHub Pages에 HTML만 올리는 경우:** 정적 화면은 표시되지만 `/api/state`가 실행되지 않습니다. 여러 기기의 공동 집계에는 동봉한 서버 코드가 실행되는 Vercel 배포와 Redis 연결이 필요합니다.
+1. `supabase/setup.sql`을 새 프로젝트에 한 번 적용합니다.
+2. 행사 초기 상태를 `hwaseong_judging_events`에 넣고 접속 코드 해시를 `hwaseong_judging_codes`에 등록합니다. 실제 코드는 각 담당자에게만 전달합니다.
+3. `node scripts/build-edge.cjs` 실행 후 `supabase/functions/judging-state`를 배포합니다.
+4. `api/state.js`의 공개 Edge Function URL을 대상 프로젝트 URL로 바꾸고 Vercel에 재배포합니다.
+5. 운영용 행사 데이터와 검증용 데이터는 별도 event_id 및 별도 코드로 분리합니다.
 
 ## 3. 심사 기준과 계산 방식
 
@@ -116,7 +99,7 @@ node scripts/create-codes.cjs
 
 연결이 끊기면 화면에 실패가 표시되고 미저장 입력은 현재 열린 화면에서 유지됩니다. ‘지금 저장’으로 재시도할 수 있습니다. 저장에 실패한 상태에서 창을 닫기 전 ‘내 입력 백업’으로 내용을 저장하세요. 공동 집계 모드의 미저장 초안은 새로고침·창 닫기 후 자동 복구되지 않습니다.
 
-같은 위원 코드로 여러 창에서 동시에 수정하면 버전 충돌을 감지합니다. ‘내 입력 백업’으로 기록을 남기고 ‘최신 점수 불러오기’를 누른 뒤 필요한 점수만 다시 입력합니다. 서로 다른 위원의 동시 저장은 Redis 비교·교환으로 병합되어 다른 위원 점수를 덮어쓰지 않습니다.
+같은 위원 코드로 여러 창에서 동시에 수정하면 버전 충돌을 감지합니다. ‘내 입력 백업’으로 기록을 남기고 ‘최신 점수 불러오기’를 누른 뒤 필요한 점수만 다시 입력합니다. 서로 다른 위원의 동시 저장은 Postgres 버전 조건부 갱신으로 병합되어 다른 위원 점수를 덮어쓰지 않습니다.
 
 ## 5. 반영 자료
 
@@ -137,12 +120,12 @@ npm test
 
 현재 집계 로직은 이번 행사에 맞춰 **작품 6개·위원 5명·항목 5개·항목별 20점**을 전제로 합니다. 개수·배점 변경은 `lib/core.cjs`, HTML의 진행률·입력범위, 검증코드를 함께 수정해야 합니다. 심사 도중 ID나 부문을 변경하지 말고 별도 행사 공간에서 먼저 확인하세요.
 
-검증 결과: 8개 자동 검증 통과. 점수 범위·미입력·0점·합계·평균·부문별 순위·동점·제출 잠금·수정 허용·버전 충돌·서버 권한·동시 저장을 확인했습니다. API 검증은 Redis REST 응답과 비교·교환 동작을 모사하여 실행했습니다. 실제 Vercel·Upstash 연결, 기기 간 동작, 브라우저 렌더링은 배포 후 확인이 필요합니다.
+검증 결과: 8개 자동 검증 통과. 점수 범위·미입력·0점·합계·평균·부문별 순위·동점·제출 잠금·수정 허용·버전 충돌·서버 권한·동시 저장을 확인했습니다. API 검증은 Supabase REST 응답과 조건부 갱신을 모사합니다. 실제 연결 검증 결과는 배포 시 별도로 확인합니다.
 
 설정 참고 문서(2026.9.9. 확인):
 
 - [Vercel Node.js Functions](https://vercel.com/docs/functions/runtimes/node-js)
 - [Vercel 프로젝트 설정](https://vercel.com/docs/project-configuration)
-- [Upstash Redis REST API](https://upstash.com/docs/redis/features/restapi)
+- [Supabase 서버 환경변수](https://supabase.com/docs/guides/functions/secrets)
 
 서명란 업데이트 검증: 인쇄 전용 HTML을 PDF로 렌더링하여 A4 가로 1페이지, 작품 6개, 결과표 2개, 위원 5명의 서명란 및 동점 안내 표시를 확인했습니다. 검증용 점수는 배포 파일에 포함하지 않았습니다.

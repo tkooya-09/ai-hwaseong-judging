@@ -1,10 +1,25 @@
-const {test}=require('node:test');const assert=require('node:assert/strict');const handler=require('../api/state.js');const C=require('../lib/core.cjs');
-test('API auth, parallel five-judge writes, visibility, lock and storage failure',async()=>{
- const original=global.fetch,env={...process.env};let stored=null;
- process.env.UPSTASH_REDIS_REST_URL='https://test.invalid';process.env.UPSTASH_REDIS_REST_TOKEN='test-store';process.env.ADMIN_TOKEN='admin-'+('x'.repeat(30));
- const codes=Object.fromEntries(C.DATA.judges.map(j=>[j.id,j.id+'-'+('x'.repeat(30))]));process.env.JUDGE_TOKENS=JSON.stringify(codes);
- global.fetch=async(url,opt)=>{const cmd=JSON.parse(opt.body);if(cmd[0]==='GET')return {ok:true,json:async()=>({result:stored})};if(cmd[0]==='EVAL'){const match=(stored||'')===cmd[4];if(match)stored=cmd[5];return {ok:true,json:async()=>({result:match?1:0})};}throw Error('Unexpected Redis command');};
- async function call(role,body,customToken){const req={method:body?'POST':'GET',headers:{authorization:'Bearer '+(customToken??(role==='admin'?process.env.ADMIN_TOKEN:codes[role])),'content-type':'application/json'},body};const res={setHeader(){},status(n){this.code=n;return this;},json(data){this.data=data;return this;}};await handler(req,res);return res;}
+const {test}=require('node:test');const assert=require('node:assert/strict');const {createHash}=require('node:crypto');const C=require('../lib/core.cjs');
+test('Supabase API auth, parallel five-judge writes, visibility, lock and storage failure',async()=>{
+ const {createHandler}=await import('../supabase/functions/judging-state/handler.mjs');
+ let stored=C.initial();
+ const adminCode='admin-'+('x'.repeat(30));
+ const codes=Object.fromEntries(C.DATA.judges.map(j=>[j.id,j.id+'-'+('x'.repeat(30))]));
+ const hashes=Object.fromEntries(Object.entries({admin:adminCode,...codes}).map(([role,token])=>[createHash('sha256').update(token).digest('hex'),role]));
+ let offline=false;
+ const request=async(url,opt)=>{
+  if(offline)throw Error('offline');
+  const u=new URL(url);
+  if(u.pathname.endsWith('hwaseong_judging_codes')){const role=hashes[u.searchParams.get('token_hash').slice(3)];return Response.json(role?[{role,event_id:'test'}]:[]);}
+  if(opt.method==='GET')return Response.json([{state:structuredClone(stored),revision:stored.revision}]);
+  const expected=Number(u.searchParams.get('revision').slice(3));
+  if(stored.revision!==expected)return Response.json([]);
+  const next=JSON.parse(opt.body);stored=next.state;return Response.json([next]);
+ };
+ const handler=createHandler(C,k=>({SUPABASE_URL:'https://test.invalid',SUPABASE_SECRET_KEYS:'{"default":"sb_secret_test"}'}[k]),request);
+ async function call(role,body,customToken){
+  const req=new Request('https://test.invalid',{method:body?'POST':'GET',headers:{authorization:'Bearer '+(customToken??(role==='admin'?adminCode:codes[role])),'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+  const res=await handler(req);return {code:res.status,data:await res.json()};
+ }
  try{
   assert.equal((await call('admin',undefined,'wrong')).code,401);
   const unauthorized=await call('j1',{type:'finalize'});assert.equal(unauthorized.code,403);
@@ -17,6 +32,6 @@ test('API auth, parallel five-judge writes, visibility, lock and storage failure
   assert.deepEqual((await Promise.all(C.DATA.judges.map(j=>call(j.id,{type:'submit',expectedRevision:1})))).map(x=>x.code),[200,200,200,200,200]);
   const final=await call('admin',{type:'finalize'});assert.equal(final.code,200);assert.equal(C.ranking(final.data.state)[0].sum,450);
   assert.equal((await call('j1',{type:'save',expectedRevision:2,scores:C.blankScores()})).code,409);
-  global.fetch=async()=>{throw Error('offline');};assert.equal((await call('admin')).code,503);
- }finally{global.fetch=original;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
+  offline=true;assert.equal((await call('admin')).code,503);
+ }finally{}
 });
