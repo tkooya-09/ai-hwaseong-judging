@@ -18,6 +18,23 @@ const C = (function(DATA){
       if(action.type==='save'){validate(action.scores);b.scores=clone(action.scores);}
       if(action.type==='submit'){if(filled(b.scores)!==30)fail('6개 작품의 30개 항목을 모두 입력해야 합니다.');b.submitted=true;b.submittedAt=now;}
       b.revision++;b.updatedAt=now;
+    }else if(action.type==='admin_save'||action.type==='reset'){
+      if(!admin)fail('관리자만 점수를 수정하거나 초기화할 수 있습니다.',403);
+      if(typeof action.reason!=='string'||action.reason.trim().length<2||action.reason.length>500)fail('사유를 2~500자로 입력하세요.');
+      if(action.type==='reset'){
+        if(action.confirmation!=='전체 초기화')fail('초기화 확인 문구가 일치하지 않습니다.');
+        if(action.expectedRevision!==s.revision)fail('점수가 변경되었습니다. 최신 상태에서 다시 초기화하세요.',409);
+        s.audit.push({at:now,role,type:'reset_snapshot',ballots:clone(s.ballots),finalized:s.finalized,finalizedAt:s.finalizedAt});
+        for(const target of Object.values(s.ballots)){target.scores=blankScores();target.submitted=false;target.submittedAt=null;target.revision++;target.updatedAt=now;}
+      }else{
+        const target=s.ballots[action.judgeId];if(!target)fail('심사위원을 확인하세요.');
+        if(action.expectedRevision!==target.revision)fail('해당 위원의 점수가 변경되었습니다. 창을 닫고 다시 열어 수정하세요.',409);
+        validate(action.scores);
+        s.audit.push({at:now,role,type:'admin_score_change',judgeId:action.judgeId,before:clone(target.scores),after:clone(action.scores),reason:action.reason});
+        target.scores=clone(action.scores);target.revision++;target.updatedAt=now;
+        if(filled(target.scores)!==30){target.submitted=false;target.submittedAt=null;}
+      }
+      s.finalized=false;s.finalizedAt=null;
     }else if(action.type==='finalize'){
       if(!admin)fail('운영자만 전체 심사를 완료할 수 있습니다.',403);
       if(s.finalized)fail('이미 완료된 심사입니다.',409);
@@ -44,7 +61,6 @@ const C = (function(DATA){
 })({
   "event": "2026 AI화성 챌린지",
   "date": "2026. 9. 17.(목)",
-  "location": "화성시청 3층 대강당",
   "projects": [
     {
       "id": "p1",

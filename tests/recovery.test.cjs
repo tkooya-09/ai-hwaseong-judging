@@ -37,3 +37,4 @@ test('individual print differentiates blank and zero; final results keep all fiv
  assert.equal((P.render(s).match(/자필 서명란/g)||[]).length,5);
  assert.throws(()=>P.ballot(C.visible(s,'j1'),'j2'),/출력할 심사표/);
 });
+
