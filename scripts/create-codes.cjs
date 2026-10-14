@@ -5,3 +5,4 @@ for(const role of ['admin','j1','j2','j3','j4','j5']){
 }
 // Store hashes in hwaseong_judging_codes. Share each code with its owner only.
 // Never commit this command's output.
+

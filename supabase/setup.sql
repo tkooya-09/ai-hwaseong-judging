@@ -17,3 +17,4 @@ alter table public.hwaseong_judging_events enable row level security;
 alter table public.hwaseong_judging_codes enable row level security;
 revoke all on public.hwaseong_judging_events, public.hwaseong_judging_codes from public, anon, authenticated;
 grant select,insert,update,delete on public.hwaseong_judging_events, public.hwaseong_judging_codes to service_role;
+

@@ -40,3 +40,4 @@ test('Supabase API auth, parallel five-judge writes, visibility, lock and storag
   offline=true;assert.equal((await call('admin')).code,503);
  }finally{}
 });
+

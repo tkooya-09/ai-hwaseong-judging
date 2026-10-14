@@ -6,3 +6,4 @@ const template=fs.readFileSync(path.join(root,'index.template.html'),'utf8');
 const html=template.replace('/*__DATA__*/',()=>data).replace('/*__CORE__*/',()=>core).replace('/*__PRINT__*/',()=>print);
 fs.mkdirSync(path.join(root,'dist'),{recursive:true});fs.writeFileSync(path.join(root,'dist/index.html'),html);
 console.log('Built dist/index.html (standalone HTML)');
+

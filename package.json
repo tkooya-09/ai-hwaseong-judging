@@ -1,6 +1,6 @@
 {
   "name": "hwaseong-ai-judging",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "build": "node scripts/build.cjs && node scripts/build-edge.cjs",
@@ -10,4 +10,3 @@
     "node": ">=22"
   }
 }
-

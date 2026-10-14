@@ -13,3 +13,4 @@ test('admin correction and reset preserve audit, invalidate finalization and rej
  const reset=C.mutate(final,'admin',action);for(const j of C.DATA.judges){assert.equal(C.filled(reset.ballots[j.id].scores),0);assert.equal(reset.ballots[j.id].submitted,false);assert(reset.ballots[j.id].revision>final.ballots[j.id].revision);}assert.equal(reset.finalized,false);assert.equal(reset.audit.at(-2).type,'reset_snapshot');
  assert.throws(()=>C.mutate(reset,'j1',{type:'save',scores:changed,expectedRevision:final.ballots.j1.revision}));
 });
+

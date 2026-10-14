@@ -38,3 +38,4 @@ test('individual print differentiates blank and zero; final results keep all fiv
  assert.throws(()=>P.ballot(C.visible(s,'j1'),'j2'),/출력할 심사표/);
 });
 
+
